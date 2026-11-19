@@ -255,19 +255,21 @@ function forecastCase(c: Case): { trophies: Array<{ id: number; q: number[] }> }
       // snapshot while the tracked base jumped. So the median scales the last
       // rate by the player ratio of that documented refresh (first read's
       // players over 3,868), and a trophy everybody already has stays near
-      // everybody, as the rules say it did. The spread (0.5 logit units)
+      // everybody, as the rules say it did. The spread (0.35 logit units)
       // covers earners having grown during the stale window and the next
-      // jump differing in size. This branch only fires when a case's history
-      // never moved at all; a case with any movement (the final's 2.5 days of
-      // reads) takes the trend fits below instead.
+      // jump differing in size; the practice grade of the 0.5-spread version
+      // covered 92.7% at a nominal 90%, so the spread is tightened a little.
+      // This branch only fires when a case's history never moved at all; a
+      // case with any movement (the final's 2.5 days of reads) takes the
+      // trend fits below instead.
       if (rLast >= 99.99) {
-        rows.push({ id: trophy.id, q: quantiles(99.99, 0.5) });
+        rows.push({ id: trophy.id, q: quantiles(99.99, 0.35) });
       } else if (rLast <= 0.01) {
         rows.push({ id: trophy.id, q: quantiles(0.05, 1.6) });
       } else {
         const firstN = distinct[0].players_tracked;
         const scale = firstN > 0 && firstN < REFRESH_PLAYERS ? firstN / REFRESH_PLAYERS : 0.5;
-        rows.push({ id: trophy.id, q: quantiles(rLast * scale, 0.5) });
+        rows.push({ id: trophy.id, q: quantiles(rLast * scale, 0.35) });
       }
       continue;
     }
