@@ -37,9 +37,10 @@
 //
 // When a case's history never changes (the practice cases: every read before
 // the checkpoint is the same launch-night page), no trend can be fitted. The
-// forecast then assumes the next refresh dilutes the rate by about half
-// (earners keep growing while the tracked base jumps) with a wide spread
-// (sigma 1.6 logit units), instead of pretending the frozen page will hold.
+// forecast then uses the refresh the rules document — the page sat at 638
+// players tracked, then refreshed to 3,868 with every rate but the 100% one
+// lower — scaling the last rate by that player ratio (638/3868), with a
+// spread for earners having grown during the stale window.
 //
 // Only the case file is read: no network, no clock, no randomness. Reads are
 // compressed to one observation per distinct Exophase refresh (consecutive
@@ -59,6 +60,13 @@ const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 const LEVELS = [0.05, 0.25, 0.5, 0.75, 0.95];
 /** The standard normal's quantile at each level. */
 const Z = [-1.645, -0.674, 0, 0.674, 1.645];
+/**
+ * Players tracked after the launch night's first refresh, as the rules
+ * document it: the page sat at 638 players tracked, then refreshed to 3,868
+ * with every rate but the 100% one lower. Used only as the prior for a case
+ * whose history never moved (see the frozen-page branch in forecastCase).
+ */
+const REFRESH_PLAYERS = 3868;
 
 interface Trophy {
   id: number;
@@ -240,15 +248,26 @@ function forecastCase(c: Case): { trophies: Array<{ id: number; q: number[] }> }
 
     if (flat) {
       // The page never moved before the checkpoint: the next Exophase refresh
-      // is expected to dilute the rate (tracked players jump while earners
-      // grow more slowly), so the median sits about half the last rate, with
-      // a wide spread. A trophy everybody already has stays near everybody.
+      // is expected to dilute the rate. The rules document how the launch
+      // night's first refresh behaved: the page sat unchanged at 638 players
+      // tracked, then refreshed to 3,868 players with every rate but the 100%
+      // one lower — the earners counted were essentially those of the last
+      // snapshot while the tracked base jumped. So the median scales the last
+      // rate by the player ratio of that documented refresh (first read's
+      // players over 3,868), and a trophy everybody already has stays near
+      // everybody, as the rules say it did. The spread (0.5 logit units)
+      // covers earners having grown during the stale window and the next
+      // jump differing in size. This branch only fires when a case's history
+      // never moved at all; a case with any movement (the final's 2.5 days of
+      // reads) takes the trend fits below instead.
       if (rLast >= 99.99) {
-        rows.push({ id: trophy.id, q: quantiles(98, 0.8) });
+        rows.push({ id: trophy.id, q: quantiles(99.99, 0.5) });
       } else if (rLast <= 0.01) {
         rows.push({ id: trophy.id, q: quantiles(0.05, 1.6) });
       } else {
-        rows.push({ id: trophy.id, q: quantiles(rLast * 0.5, 1.6) });
+        const firstN = distinct[0].players_tracked;
+        const scale = firstN > 0 && firstN < REFRESH_PLAYERS ? firstN / REFRESH_PLAYERS : 0.5;
+        rows.push({ id: trophy.id, q: quantiles(rLast * scale, 0.5) });
       }
       continue;
     }
